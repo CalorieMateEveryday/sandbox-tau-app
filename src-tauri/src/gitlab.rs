@@ -104,23 +104,21 @@ pub struct TimelogUser {
 
 pub const TIMELOGS_QUERY: &str = r#"
 query($fullPath: ID!, $startDate: Time!, $endDate: Time!) {
-  namespace(fullPath: $fullPath) {
-    ... on Project {
-      timelogs(startDate: $startDate, endDate: $endDate) {
-        nodes {
-          timeSpent
-          spentAt
-          user { username }
-        }
+  project(fullPath: $fullPath) {
+    timelogs(startDate: $startDate, endDate: $endDate) {
+      nodes {
+        timeSpent
+        spentAt
+        user { username }
       }
     }
-    ... on Group {
-      timelogs(startDate: $startDate, endDate: $endDate) {
-        nodes {
-          timeSpent
-          spentAt
-          user { username }
-        }
+  }
+  group(fullPath: $fullPath) {
+    timelogs(startDate: $startDate, endDate: $endDate) {
+      nodes {
+        timeSpent
+        spentAt
+        user { username }
       }
     }
   }
@@ -232,115 +230,118 @@ where T: for<'de> Deserialize<'de>
 
     let gql_res: GraphQLResponse<T> = res.json().await.map_err(|e| e.to_string())?;
 
+    // If we have data, return it even if there are errors (partial success)
+    if let Some(data) = gql_res.data {
+        return Ok(data);
+    }
+
     if let Some(errors) = gql_res.errors {
         return Err(errors.into_iter().map(|e| e.message).collect::<Vec<_>>().join(", "));
     }
 
-    gql_res.data.ok_or_else(|| "No data in response".to_string())
+    Err("No data or errors in response".to_string())
 }
 
 // Example query for Work Items
 pub const WORK_ITEMS_QUERY: &str = r#"
 query($namespacePath: ID!) {
-  namespace(fullPath: $namespacePath) {
-    ... on Project {
-      workItems(first: 100) {
-        nodes {
-          id
-          iid
-          title
-          description
-          state
-          webUrl
-          widgets {
-            ... on WorkItemWidgetAssignees {
-              assignees {
-                nodes {
-                  id
-                  username
-                  name
-                }
-              }
-            }
-            ... on WorkItemWidgetMilestone {
-              milestone {
+  project(fullPath: $namespacePath) {
+    workItems(first: 100) {
+      nodes {
+        id
+        iid
+        title
+        description
+        state
+        webUrl
+        widgets {
+          ... on WorkItemWidgetAssignees {
+            assignees {
+              nodes {
                 id
-                title
-                dueDate
+                username
+                name
               }
             }
-            ... on WorkItemWidgetHierarchy {
-              parent {
+          }
+          ... on WorkItemWidgetMilestone {
+            milestone {
+              id
+              title
+              dueDate
+            }
+          }
+          ... on WorkItemWidgetHierarchy {
+            parent {
+              id
+              iid
+              title
+            }
+            children {
+              nodes {
                 id
                 iid
                 title
               }
-              children {
-                nodes {
-                  id
-                  iid
-                  title
-                }
-              }
             }
-            ... on WorkItemWidgetProgress {
-              progress
-            }
-            ... on WorkItemWidgetTimeTracking {
-              timeEstimate
-              totalTimeSpent
-            }
+          }
+          ... on WorkItemWidgetProgress {
+            progress
+          }
+          ... on WorkItemWidgetTimeTracking {
+            timeEstimate
+            totalTimeSpent
           }
         }
       }
     }
-    ... on Group {
-      workItems(first: 100) {
-        nodes {
-          id
-          iid
-          title
-          description
-          state
-          webUrl
-          widgets {
-            ... on WorkItemWidgetAssignees {
-              assignees {
-                nodes {
-                  id
-                  username
-                  name
-                }
-              }
-            }
-            ... on WorkItemWidgetMilestone {
-              milestone {
+  }
+  group(fullPath: $namespacePath) {
+    workItems(first: 100) {
+      nodes {
+        id
+        iid
+        title
+        description
+        state
+        webUrl
+        widgets {
+          ... on WorkItemWidgetAssignees {
+            assignees {
+              nodes {
                 id
-                title
-                dueDate
+                username
+                name
               }
             }
-            ... on WorkItemWidgetHierarchy {
-              parent {
+          }
+          ... on WorkItemWidgetMilestone {
+            milestone {
+              id
+              title
+              dueDate
+            }
+          }
+          ... on WorkItemWidgetHierarchy {
+            parent {
+              id
+              iid
+              title
+            }
+            children {
+              nodes {
                 id
                 iid
                 title
               }
-              children {
-                nodes {
-                  id
-                  iid
-                  title
-                }
-              }
             }
-            ... on WorkItemWidgetProgress {
-              progress
-            }
-            ... on WorkItemWidgetTimeTracking {
-              timeEstimate
-              totalTimeSpent
-            }
+          }
+          ... on WorkItemWidgetProgress {
+            progress
+          }
+          ... on WorkItemWidgetTimeTracking {
+            timeEstimate
+            totalTimeSpent
           }
         }
       }
