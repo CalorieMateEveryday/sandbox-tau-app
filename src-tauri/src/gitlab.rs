@@ -94,14 +94,25 @@ pub struct TimelogNode {
     pub time_spent: i64,
     #[serde(rename = "spentAt")]
     pub spent_at: String,
+    pub user: Option<TimelogUser>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TimelogUser {
+    pub username: String,
 }
 
 pub const TIMELOGS_QUERY: &str = r#"
-query($username: String!, $startDate: Date!, $endDate: Date!) {
-  timelogs(username: $username, startDate: $startDate, endDate: $endDate) {
-    nodes {
-      timeSpent
-      spentAt
+query($fullPath: ID!, $startDate: Time!, $endDate: Time!) {
+  workspace(fullPath: $fullPath) {
+    timelogs(startDate: $startDate, endDate: $endDate) {
+      nodes {
+        timeSpent
+        spentAt
+        user {
+          username
+        }
+      }
     }
   }
 }

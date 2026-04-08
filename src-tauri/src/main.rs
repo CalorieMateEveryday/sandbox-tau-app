@@ -146,13 +146,22 @@ async fn calculate_capacities(app_handle: tauri::AppHandle) -> Result<std::colle
     let end_date = chrono::Local::now().naive_local().date();
     let start_date = end_date - chrono::Duration::days(config.average_capacity_months as i64 * 30);
     
-    let mut capacities = std::collections::HashMap::new();
+    let mut user_seconds: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    for u in &config.users {
+        user_seconds.insert(u.username.clone(), 0);
+    }
 
-    for user in config.users {
+    let start_date_str = format!("{}T00:00:00Z", start_date);
+    let end_date_str = format!("{}T23:59:59Z", end_date);
+
+    let mut combined_paths = config.targets.projects.clone();
+    combined_paths.extend(config.targets.groups.clone());
+
+    for path in combined_paths {
         let variables = serde_json::json!({
-            "username": user.username,
-            "startDate": start_date.to_string(),
-            "endDate": end_date.to_string()
+            "fullPath": path,
+            "startDate": start_date_str,
+            "endDate": end_date_str
         });
 
         let gql_res: serde_json::Value = query_gitlab(
@@ -160,11 +169,27 @@ async fn calculate_capacities(app_handle: tauri::AppHandle) -> Result<std::colle
             &config.gitlab.token,
             gitlab::TIMELOGS_QUERY,
             variables
-        ).await?;
+        ).await.unwrap_or_else(|e| {
+            eprintln!("Warning: Failed to query timelogs for {}: {}", path, e);
+            serde_json::json!({ "workspace": { "timelogs": { "nodes": [] } } })
+        });
 
-        let nodes_val = gql_res.pointer("/timelogs/nodes").ok_or("Failed to find timelogs nodes")?;
-        let nodes: Vec<gitlab::TimelogNode> = serde_json::from_value(nodes_val.clone()).map_err(|e| e.to_string())?;
-        let total_seconds: i64 = nodes.iter().map(|n| n.time_spent).sum();
+        if let Some(nodes) = gql_res.pointer("/workspace/timelogs/nodes").and_then(|n| n.as_array()) {
+            for node_val in nodes {
+                if let Ok(node) = serde_json::from_value::<gitlab::TimelogNode>(node_val.clone()) {
+                    if let Some(user) = node.user {
+                        if user_seconds.contains_key(&user.username) {
+                            *user_seconds.get_mut(&user.username).unwrap() += node.time_spent;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut capacities = std::collections::HashMap::new();
+    for user in config.users {
+        let total_seconds = user_seconds.get(&user.username).cloned().unwrap_or(0);
         
         let mut working_days = 0;
         let mut curr = start_date;
