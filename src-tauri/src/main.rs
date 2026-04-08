@@ -174,11 +174,9 @@ async fn calculate_capacities(app_handle: tauri::AppHandle) -> Result<std::colle
             serde_json::json!({ "workspace": { "timelogs": { "nodes": [] } } })
         });
 
-        let mut project_nodes = gql_res.pointer("/project/timelogs/nodes").and_then(|n| n.as_array()).cloned().unwrap_or_default();
-        let group_nodes = gql_res.pointer("/group/timelogs/nodes").and_then(|n| n.as_array()).cloned().unwrap_or_default();
-        project_nodes.extend(group_nodes);
+        let timelog_nodes = gql_res.pointer("/namespace/timelogs/nodes").and_then(|n| n.as_array()).cloned().unwrap_or_default();
 
-        for node_val in project_nodes {
+        for node_val in timelog_nodes {
             if let Ok(node) = serde_json::from_value::<gitlab::TimelogNode>(node_val) {
                 if let Some(user) = node.user {
                     if user_seconds.contains_key(&user.username) {
@@ -298,11 +296,9 @@ async fn fetch_gitlab_data(app_handle: tauri::AppHandle, force: bool) -> Result<
             variables
         ).await?;
 
-        let mut project_nodes = response.pointer("/project/workItems/nodes").and_then(|n| n.as_array()).cloned().unwrap_or_default();
-        let group_nodes = response.pointer("/group/workItems/nodes").and_then(|n| n.as_array()).cloned().unwrap_or_default();
-        project_nodes.extend(group_nodes);
+        let work_item_nodes = response.pointer("/namespace/workItems/nodes").and_then(|n| n.as_array()).cloned().unwrap_or_default();
 
-        for node_val in project_nodes {
+        for node_val in work_item_nodes {
             let node: WorkItemNode = serde_json::from_value(node_val).map_err(|e| e.to_string())?;
             
             let mut flattened = FlattenedWorkItem {

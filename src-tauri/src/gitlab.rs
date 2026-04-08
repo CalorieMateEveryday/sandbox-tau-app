@@ -104,24 +104,22 @@ pub struct TimelogUser {
 
 pub const TIMELOGS_QUERY: &str = r#"
 query($fullPath: ID!, $startDate: Time!, $endDate: Time!) {
-  project(fullPath: $fullPath) {
-    timelogs(startDate: $startDate, endDate: $endDate) {
-      nodes {
-        timeSpent
-        spentAt
-        user {
-          username
+  namespace(fullPath: $fullPath) {
+    ... on Project {
+      timelogs(startDate: $startDate, endDate: $endDate) {
+        nodes {
+          timeSpent
+          spentAt
+          user { username }
         }
       }
     }
-  }
-  group(fullPath: $fullPath) {
-    timelogs(startDate: $startDate, endDate: $endDate) {
-      nodes {
-        timeSpent
-        spentAt
-        user {
-          username
+    ... on Group {
+      timelogs(startDate: $startDate, endDate: $endDate) {
+        nodes {
+          timeSpent
+          spentAt
+          user { username }
         }
       }
     }
@@ -244,103 +242,105 @@ where T: for<'de> Deserialize<'de>
 // Example query for Work Items
 pub const WORK_ITEMS_QUERY: &str = r#"
 query($namespacePath: ID!) {
-  project(fullPath: $namespacePath) {
-    workItems(first: 100) {
-      nodes {
-        id
-        iid
-        title
-        description
-        state
-        webUrl
-        widgets {
-          ... on WorkItemWidgetAssignees {
-            assignees {
-              nodes {
-                id
-                username
-                name
+  namespace(fullPath: $namespacePath) {
+    ... on Project {
+      workItems(first: 100) {
+        nodes {
+          id
+          iid
+          title
+          description
+          state
+          webUrl
+          widgets {
+            ... on WorkItemWidgetAssignees {
+              assignees {
+                nodes {
+                  id
+                  username
+                  name
+                }
               }
             }
-          }
-          ... on WorkItemWidgetMilestone {
-            milestone {
-              id
-              title
-              dueDate
+            ... on WorkItemWidgetMilestone {
+              milestone {
+                id
+                title
+                dueDate
+              }
             }
-          }
-          ... on WorkItemWidgetHierarchy {
-            parent {
-              id
-              iid
-              title
-            }
-            children {
-              nodes {
+            ... on WorkItemWidgetHierarchy {
+              parent {
                 id
                 iid
                 title
               }
+              children {
+                nodes {
+                  id
+                  iid
+                  title
+                }
+              }
             }
-          }
-          ... on WorkItemWidgetProgress {
-            progress
-          }
-          ... on WorkItemWidgetTimeTracking {
-            timeEstimate
-            totalTimeSpent
+            ... on WorkItemWidgetProgress {
+              progress
+            }
+            ... on WorkItemWidgetTimeTracking {
+              timeEstimate
+              totalTimeSpent
+            }
           }
         }
       }
     }
-  }
-  group(fullPath: $namespacePath) {
-    workItems(first: 100) {
-      nodes {
-        id
-        iid
-        title
-        description
-        state
-        webUrl
-        widgets {
-          ... on WorkItemWidgetAssignees {
-            assignees {
-              nodes {
-                id
-                username
-                name
+    ... on Group {
+      workItems(first: 100) {
+        nodes {
+          id
+          iid
+          title
+          description
+          state
+          webUrl
+          widgets {
+            ... on WorkItemWidgetAssignees {
+              assignees {
+                nodes {
+                  id
+                  username
+                  name
+                }
               }
             }
-          }
-          ... on WorkItemWidgetMilestone {
-            milestone {
-              id
-              title
-              dueDate
+            ... on WorkItemWidgetMilestone {
+              milestone {
+                id
+                title
+                dueDate
+              }
             }
-          }
-          ... on WorkItemWidgetHierarchy {
-            parent {
-              id
-              iid
-              title
-            }
-            children {
-              nodes {
+            ... on WorkItemWidgetHierarchy {
+              parent {
                 id
                 iid
                 title
               }
+              children {
+                nodes {
+                  id
+                  iid
+                  title
+                }
+              }
             }
-          }
-          ... on WorkItemWidgetProgress {
-            progress
-          }
-          ... on WorkItemWidgetTimeTracking {
-            timeEstimate
-            totalTimeSpent
+            ... on WorkItemWidgetProgress {
+              progress
+            }
+            ... on WorkItemWidgetTimeTracking {
+              timeEstimate
+              totalTimeSpent
+            }
           }
         }
       }
