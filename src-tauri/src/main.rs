@@ -174,13 +174,15 @@ async fn calculate_capacities(app_handle: tauri::AppHandle) -> Result<std::colle
             serde_json::json!({ "workspace": { "timelogs": { "nodes": [] } } })
         });
 
-        if let Some(nodes) = gql_res.pointer("/workspace/timelogs/nodes").and_then(|n| n.as_array()) {
-            for node_val in nodes {
-                if let Ok(node) = serde_json::from_value::<gitlab::TimelogNode>(node_val.clone()) {
-                    if let Some(user) = node.user {
-                        if user_seconds.contains_key(&user.username) {
-                            *user_seconds.get_mut(&user.username).unwrap() += node.time_spent;
-                        }
+        let mut project_nodes = gql_res.pointer("/project/timelogs/nodes").and_then(|n| n.as_array()).cloned().unwrap_or_default();
+        let group_nodes = gql_res.pointer("/group/timelogs/nodes").and_then(|n| n.as_array()).cloned().unwrap_or_default();
+        project_nodes.extend(group_nodes);
+
+        for node_val in project_nodes {
+            if let Ok(node) = serde_json::from_value::<gitlab::TimelogNode>(node_val) {
+                if let Some(user) = node.user {
+                    if user_seconds.contains_key(&user.username) {
+                        *user_seconds.get_mut(&user.username).unwrap() += node.time_spent;
                     }
                 }
             }
@@ -296,25 +298,28 @@ async fn fetch_gitlab_data(app_handle: tauri::AppHandle, force: bool) -> Result<
             variables
         ).await?;
 
-        if let Some(nodes) = response.pointer("/workspace/workItems/nodes").and_then(|n| n.as_array()) {
-            for node_val in nodes {
-                let node: WorkItemNode = serde_json::from_value(node_val.clone()).map_err(|e| e.to_string())?;
-                
-                let mut flattened = FlattenedWorkItem {
-                    id: node.id,
-                    iid: node.iid.parse().unwrap_or(0),
-                    title: node.title,
-                    description: node.description,
-                    state: node.state,
-                    web_url: node.web_url,
-                    assignees: vec![],
-                    time_stats: TimeStats { time_estimate: 0, total_time_spent: 0 },
-                    parent_iid: None,
-                    labels: vec![],
-                    milestone: None,
-                    due_date: None,
-                    product: None,
-                };
+        let mut project_nodes = response.pointer("/project/workItems/nodes").and_then(|n| n.as_array()).cloned().unwrap_or_default();
+        let group_nodes = response.pointer("/group/workItems/nodes").and_then(|n| n.as_array()).cloned().unwrap_or_default();
+        project_nodes.extend(group_nodes);
+
+        for node_val in project_nodes {
+            let node: WorkItemNode = serde_json::from_value(node_val).map_err(|e| e.to_string())?;
+            
+            let mut flattened = FlattenedWorkItem {
+                id: node.id,
+                iid: node.iid.parse().unwrap_or(0),
+                title: node.title,
+                description: node.description,
+                state: node.state,
+                web_url: node.web_url,
+                assignees: vec![],
+                time_stats: TimeStats { time_estimate: 0, total_time_spent: 0 },
+                parent_iid: None,
+                labels: vec![],
+                milestone: None,
+                due_date: None,
+                product: None,
+            };
 
                 let mut has_labels = false;
                 for widget in node.widgets {
@@ -368,7 +373,6 @@ async fn fetch_gitlab_data(app_handle: tauri::AppHandle, force: bool) -> Result<
                 all_items.push(flattened);
             }
         }
-    }
 
     fs::create_dir_all(cache_path.parent().unwrap()).map_err(|e| e.to_string())?;
     fs::write(&cache_path, serde_json::to_string_pretty(&all_items).unwrap()).map_err(|e| e.to_string())?;

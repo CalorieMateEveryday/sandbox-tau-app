@@ -104,7 +104,18 @@ pub struct TimelogUser {
 
 pub const TIMELOGS_QUERY: &str = r#"
 query($fullPath: ID!, $startDate: Time!, $endDate: Time!) {
-  workspace(fullPath: $fullPath) {
+  project(fullPath: $fullPath) {
+    timelogs(startDate: $startDate, endDate: $endDate) {
+      nodes {
+        timeSpent
+        spentAt
+        user {
+          username
+        }
+      }
+    }
+  }
+  group(fullPath: $fullPath) {
     timelogs(startDate: $startDate, endDate: $endDate) {
       nodes {
         timeSpent
@@ -233,7 +244,58 @@ where T: for<'de> Deserialize<'de>
 // Example query for Work Items
 pub const WORK_ITEMS_QUERY: &str = r#"
 query($namespacePath: ID!) {
-  workspace(fullPath: $namespacePath) {
+  project(fullPath: $namespacePath) {
+    workItems(first: 100) {
+      nodes {
+        id
+        iid
+        title
+        description
+        state
+        webUrl
+        widgets {
+          ... on WorkItemWidgetAssignees {
+            assignees {
+              nodes {
+                id
+                username
+                name
+              }
+            }
+          }
+          ... on WorkItemWidgetMilestone {
+            milestone {
+              id
+              title
+              dueDate
+            }
+          }
+          ... on WorkItemWidgetHierarchy {
+            parent {
+              id
+              iid
+              title
+            }
+            children {
+              nodes {
+                id
+                iid
+                title
+              }
+            }
+          }
+          ... on WorkItemWidgetProgress {
+            progress
+          }
+          ... on WorkItemWidgetTimeTracking {
+            timeEstimate
+            totalTimeSpent
+          }
+        }
+      }
+    }
+  }
+  group(fullPath: $namespacePath) {
     workItems(first: 100) {
       nodes {
         id
