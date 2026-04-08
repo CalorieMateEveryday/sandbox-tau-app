@@ -173,6 +173,8 @@ async fn calculate_capacities(app_handle: tauri::AppHandle) -> Result<std::colle
             eprintln!("Warning: Failed to query timelogs for {}: {}", path, e);
             serde_json::json!({ "workspace": { "timelogs": { "nodes": [] } } })
         });
+        
+        println!("DEBUG: Capacity Response for {}: {:?}", path, gql_res);
 
         let mut project_nodes = gql_res.pointer("/project/timelogs/nodes").and_then(|n| n.as_array()).cloned().unwrap_or_default();
         let group_nodes = gql_res.pointer("/group/timelogs/nodes").and_then(|n| n.as_array()).cloned().unwrap_or_default();
@@ -297,6 +299,8 @@ async fn fetch_gitlab_data(app_handle: tauri::AppHandle, force: bool) -> Result<
             gitlab::WORK_ITEMS_QUERY,
             variables
         ).await?;
+        
+        println!("DEBUG: WorkItems Response for {}: {:?}", project_path, response);
 
         let mut project_nodes = response.pointer("/project/workItems/nodes").and_then(|n| n.as_array()).cloned().unwrap_or_default();
         let group_nodes = response.pointer("/group/workItems/nodes").and_then(|n| n.as_array()).cloned().unwrap_or_default();
