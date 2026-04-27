@@ -8,6 +8,7 @@ use std::fs;
 use gitlab::{query_gitlab, WorkItemNode, WorkItemWidget};
 use chrono::Datelike;
 use tauri::{Manager, Emitter};
+use url::form_urlencoded;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GitLabConfig {
@@ -464,6 +465,118 @@ async fn update_work_item_estimate(
     ).await
 }
 
+#[tauri::command]
+async fn update_work_item_description(
+    app_handle: tauri::AppHandle,
+    work_item_id: String,
+    description: String
+) -> Result<(), String> {
+    let config = get_config(app_handle).map_err(|e| e.to_string())?;
+    gitlab::update_work_item_description_gql(
+        &config.gitlab.url,
+        &config.gitlab.token,
+        &work_item_id,
+        &description
+    ).await
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GitlabLabel {
+    pub id: u64,
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GitlabMilestone {
+    pub id: u64,
+    pub title: String,
+    pub due_date: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TargetsMeta {
+    pub labels: Vec<GitlabLabel>,
+    pub milestones: Vec<GitlabMilestone>,
+}
+
+#[tauri::command]
+async fn fetch_targets_meta(app_handle: tauri::AppHandle) -> Result<TargetsMeta, String> {
+    let config = get_config(app_handle).map_err(|e| e.to_string())?;
+    let client = reqwest::Client::new();
+    
+    let mut all_labels = std::collections::HashMap::new();
+    let mut all_milestones = std::collections::HashMap::new();
+
+    // Helper to fetch from a generic endpoint
+    let fetch_paginated = |endpoint: String| {
+        let client = client.clone();
+        let token = config.gitlab.token.clone();
+        async move {
+            let mut results = Vec::new();
+            let mut page = 1;
+            loop {
+                let url = format!("{}?per_page=100&page={}", endpoint, page);
+                let res = client.get(&url).header("PRIVATE-TOKEN", &token).send().await;
+                if let Ok(r) = res {
+                    if r.status().is_success() {
+                        let json: serde_json::Value = r.json().await.unwrap_or(serde_json::Value::Null);
+                        if let Some(arr) = json.as_array() {
+                            if arr.is_empty() { break; }
+                            results.extend(arr.clone());
+                            page += 1;
+                            continue;
+                        }
+                    }
+                }
+                break;
+            }
+            results
+        }
+    };
+
+    for group in &config.targets.groups {
+        let encoded = form_urlencoded::byte_serialize(group.as_bytes()).collect::<String>();
+        
+        let labels_endpoint = format!("{}/api/v4/groups/{}/labels", config.gitlab.url, encoded);
+        for l in fetch_paginated(labels_endpoint).await {
+            if let Ok(label) = serde_json::from_value::<GitlabLabel>(l) {
+                all_labels.insert(label.name.clone(), label);
+            }
+        }
+
+        let ms_endpoint = format!("{}/api/v4/groups/{}/milestones", config.gitlab.url, encoded);
+        for m in fetch_paginated(ms_endpoint).await {
+            if let Ok(ms) = serde_json::from_value::<GitlabMilestone>(m) {
+                all_milestones.insert(ms.title.clone(), ms);
+            }
+        }
+    }
+
+    for project in &config.targets.projects {
+        let encoded = form_urlencoded::byte_serialize(project.as_bytes()).collect::<String>();
+        
+        let labels_endpoint = format!("{}/api/v4/projects/{}/labels", config.gitlab.url, encoded);
+        for l in fetch_paginated(labels_endpoint).await {
+            if let Ok(label) = serde_json::from_value::<GitlabLabel>(l) {
+                all_labels.insert(label.name.clone(), label);
+            }
+        }
+
+        let ms_endpoint = format!("{}/api/v4/projects/{}/milestones", config.gitlab.url, encoded);
+        for m in fetch_paginated(ms_endpoint).await {
+            if let Ok(ms) = serde_json::from_value::<GitlabMilestone>(m) {
+                all_milestones.insert(ms.title.clone(), ms);
+            }
+        }
+    }
+
+    Ok(TargetsMeta {
+        labels: all_labels.into_values().collect(),
+        milestones: all_milestones.into_values().collect(),
+    })
+}
+
 fn main() {
   tauri::Builder::default()
     .plugin(tauri_plugin_opener::init())
@@ -476,7 +589,9 @@ fn main() {
         create_milestone,
         create_work_item,
         create_child_work_item,
-        update_work_item_estimate
+        update_work_item_estimate,
+        fetch_targets_meta,
+        update_work_item_description
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

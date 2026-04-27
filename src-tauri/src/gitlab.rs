@@ -379,6 +379,34 @@ pub async fn update_work_item_estimate_gql(
     Ok(())
 }
 
+pub async fn update_work_item_description_gql(
+    gl_url: &str,
+    token: &str,
+    work_item_id: &str,
+    description: &str
+) -> Result<(), String> {
+    let query = r#"
+        mutation($id: WorkItemID!, $desc: String!) {
+          workItemUpdate(input: { id: $id, descriptionWidget: { description: $desc } }) {
+            errors
+          }
+        }
+    "#;
+
+    let variables = serde_json::json!({
+        "id": work_item_id,
+        "desc": description
+    });
+
+    let res: serde_json::Value = query_gitlab(gl_url, token, query, variables).await?;
+    if let Some(errors) = res.pointer("/workItemUpdate/errors").and_then(|e| e.as_array()) {
+        if !errors.is_empty() {
+            return Err(errors[0].as_str().unwrap_or("Unknown error").into());
+        }
+    }
+    Ok(())
+}
+
 pub async fn create_child_task_rest(
     gl_url: &str,
     token: &str,

@@ -10,10 +10,10 @@
       show-expand
     >
       <template v-slot:item="{ item }">
-        <tr @contextmenu.prevent="onContextMenu($event, item)">
+        <tr @contextmenu.prevent="onContextMenu($event, item)" @click="showDescription(item)" style="cursor: pointer;">
           <td>{{ item.iid }}</td>
           <td>
-            <a :href="item.web_url" target="_blank" class="text-decoration-none text-primary">
+            <a :href="item.web_url" target="_blank" class="text-decoration-none text-primary" @click.stop>
               {{ item.title }}
             </a>
           </td>
@@ -23,6 +23,7 @@
               :key="label"
               size="x-small"
               class="mr-1"
+              :color="getLabelColor(label)"
               label
             >
               {{ label }}
@@ -31,7 +32,7 @@
           <td>{{ issueStore.getDays(item.time_stats.time_estimate) }}d</td>
           <td>{{ issueStore.getDays(item.time_stats.total_time_spent) }}d</td>
           <td>{{ item.milestone?.title }}</td>
-          <td>{{ item.assignees.map(a => a.name).join(', ') }}</td>
+          <td>{{ getDisplayAssignees(item) }}</td>
         </tr>
       </template>
       <template v-slot:expanded-row="{ columns, item }">
@@ -57,21 +58,78 @@
       :parent="childDialog.item" 
       @created="issueStore.fetchData"
     />
+
+    <v-dialog v-model="descDialog.show" max-width="800">
+      <v-card>
+        <v-card-title>Description: {{ descDialog.item?.title }}</v-card-title>
+        <v-card-text>
+          <v-textarea
+            v-model="descDialog.description"
+            rows="10"
+            variant="outlined"
+            auto-grow
+          ></v-textarea>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn text @click="descDialog.show = false">Cancel</v-btn>
+          <v-btn color="primary" @click="saveDescription">Save</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, reactive } from "vue";
 import { useIssueStore } from "../store/issueStore";
+import { useMetaStore } from "../store/metaStore";
 import AddChildDialog from "./AddChildDialog.vue";
+import { invoke } from "@tauri-apps/api/core";
 
 const issueStore = useIssueStore();
+const metaStore = useMetaStore();
 const search = ref("");
 const childDialog = reactive({ show: false, item: null as any });
+const descDialog = reactive({ show: false, item: null as any, description: "" });
 
-const onContextMenu = (e: MouseEvent, item: any) => {
+const onContextMenu = (_e: MouseEvent, item: any) => {
   childDialog.item = item;
   childDialog.show = true;
+};
+
+const showDescription = (item: any) => {
+  descDialog.item = item;
+  descDialog.description = item.description || "";
+  descDialog.show = true;
+};
+
+const saveDescription = async () => {
+  if (descDialog.item) {
+    try {
+      await invoke("update_work_item_description", {
+        workItemId: descDialog.item.id,
+        description: descDialog.description
+      });
+      descDialog.item.description = descDialog.description;
+      descDialog.show = false;
+    } catch (e) {
+      console.error("Failed to update description", e);
+    }
+  }
+};
+
+const getLabelColor = (labelName: string) => {
+  const label = metaStore.labels.find(l => l.name === labelName);
+  return label ? label.color : undefined;
+};
+
+const getDisplayAssignees = (item: any) => {
+  if (!issueStore.config) return "";
+  const validUsers = issueStore.config.users.map(u => u.username);
+  const assignees = item.assignees.filter((a: any) => validUsers.includes(a.username));
+  if (assignees.length === 0) return "Unassigned";
+  return assignees.map((a: any) => a.name).join(', ');
 };
 
 const treeIssues = computed(() => {

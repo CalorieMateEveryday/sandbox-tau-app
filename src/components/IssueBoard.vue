@@ -31,6 +31,7 @@
                 :key="label"
                 size="x-small"
                 variant="outlined"
+                :color="getLabelColor(label)"
               >
                 {{ label }}
               </v-chip>
@@ -56,12 +57,14 @@
 <script setup lang="ts">
 import { reactive } from "vue";
 import { useIssueStore } from "../store/issueStore";
+import { useMetaStore } from "../store/metaStore";
 import AddChildDialog from "./AddChildDialog.vue";
 
 const issueStore = useIssueStore();
+const metaStore = useMetaStore();
 const childDialog = reactive({ show: false, item: null as any });
 
-const onContextMenu = (e: MouseEvent, item: any) => {
+const onContextMenu = (_e: MouseEvent, item: any) => {
   childDialog.item = item;
   childDialog.show = true;
 };
@@ -78,6 +81,11 @@ const getProductColor = (productName?: string) => {
     hash = productName.charCodeAt(i) + ((hash << 5) - hash);
   }
   return colors[Math.abs(hash) % colors.length];
+};
+
+const getLabelColor = (labelName: string) => {
+  const label = metaStore.labels.find(l => l.name === labelName);
+  return label ? label.color : undefined;
 };
 </script>
 

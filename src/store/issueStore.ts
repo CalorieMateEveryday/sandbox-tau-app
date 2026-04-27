@@ -49,8 +49,16 @@ export const useIssueStore = defineStore("issue", {
   getters: {
     filteredIssues(state) {
       return state.issues.filter((issue) => {
+        // Find matching assignees in config.users
+        const validAssignees = issue.assignees.filter(a => 
+          state.config?.users.some(u => u.username === a.username)
+        );
+        const isUnassigned = validAssignees.length === 0;
+
         const matchAssignee = state.filters.assignees.length === 0 || 
-          issue.assignees.some(a => state.filters.assignees.includes(a.username));
+          (isUnassigned && state.filters.assignees.includes("unassigned")) ||
+          validAssignees.some(a => state.filters.assignees.includes(a.username));
+          
         const matchProduct = state.filters.products.length === 0 || 
           (issue.product && state.filters.products.includes(issue.product));
         const matchMilestone = state.filters.milestones.length === 0 || 
@@ -63,8 +71,17 @@ export const useIssueStore = defineStore("issue", {
     },
 
     uniqueAssignees(state) {
+      if (!state.config) return [];
+      const userNames = new Set(state.config.users.map(u => u.username));
+      
       const names = new Map<string, string>();
-      state.issues.forEach(i => i.assignees.forEach(a => names.set(a.username, a.name)));
+      names.set("unassigned", "Unassigned");
+      
+      state.issues.forEach(i => i.assignees.forEach(a => {
+        if (userNames.has(a.username)) {
+          names.set(a.username, a.name);
+        }
+      }));
       return Array.from(names.entries()).map(([username, name]) => ({ username, name }));
     },
 

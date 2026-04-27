@@ -46,7 +46,7 @@
       <v-select
         class="mx-1 mt-6"
         v-model="issueStore.filters.milestones"
-        :items="issueStore.uniqueMilestones"
+        :items="metaStore.milestones.map(m => m.title)"
         label="Milestone"
         multiple
         chips
@@ -85,6 +85,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, reactive } from "vue";
 import { useIssueStore } from "./store/issueStore";
+import { useMetaStore } from "./store/metaStore";
 import { listen } from "@tauri-apps/api/event";
 import IssueList from "./components/IssueList.vue";
 import IssueBoard from "./components/IssueBoard.vue";
@@ -94,6 +95,7 @@ import BulkCreation from "./components/BulkCreation.vue";
 import AppSettings from "./components/AppSettings.vue";
 
 const issueStore = useIssueStore();
+const metaStore = useMetaStore();
 const drawer = ref(true);
 const currentView = ref("list");
 const loading = computed(() => issueStore.loading);
@@ -110,6 +112,7 @@ const refreshData = async () => {
 
 onMounted(async () => {
   await issueStore.init();
+  await metaStore.fetchMeta();
 
   // Listen for backend notifications
   await listen("app-notification", (event: any) => {
