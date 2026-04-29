@@ -242,6 +242,16 @@ where T: for<'de> Deserialize<'de>
     Err("No data or errors in response".to_string())
 }
 
+fn check_gql_errors(res: &serde_json::Value, pointer_base: &str) -> Result<(), String> {
+    let path = format!("/{}/errors", pointer_base);
+    if let Some(errors) = res.pointer(&path).and_then(|e| e.as_array()) {
+        if !errors.is_empty() {
+            return Err(errors[0].as_str().unwrap_or("Unknown error").into());
+        }
+    }
+    Ok(())
+}
+
 // Example query for Work Items
 pub const WORK_ITEMS_QUERY: &str = r#"
 query($namespacePath: ID!) {
@@ -350,61 +360,207 @@ query($namespacePath: ID!) {
 }
 "#;
 
-pub async fn update_work_item_estimate_gql(
-    gl_url: &str,
-    token: &str,
-    work_item_id: &str,
-    estimate_seconds: i64
-) -> Result<(), String> {
-    let query = r#"
-        mutation($id: WorkItemID!, $estimate: String!) {
-          workItemUpdate(input: { id: $id, timeTrackingWidget: { timeEstimate: $estimate } }) {
-            errors
-          }
-        }
-    "#;
 
-    let estimate_str = format!("{}s", estimate_seconds);
-    let variables = serde_json::json!({
-        "id": work_item_id,
-        "estimate": estimate_str
-    });
-
-    let res: serde_json::Value = query_gitlab(gl_url, token, query, variables).await?;
-    if let Some(errors) = res.pointer("/workItemUpdate/errors").and_then(|e| e.as_array()) {
-        if !errors.is_empty() {
-            return Err(errors[0].as_str().unwrap_or("Unknown error").into());
-        }
-    }
-    Ok(())
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkItemUpdateInput {
+    pub id: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub estimate_seconds: Option<i64>,
+    pub labels: Option<Vec<String>>,
+    pub milestone_id: Option<String>,
+    pub assignee_ids: Option<Vec<String>>,
+    pub due_date: Option<String>,
 }
 
-pub async fn update_work_item_description_gql(
+pub async fn update_work_item_gql(
     gl_url: &str,
     token: &str,
-    work_item_id: &str,
-    description: &str
+    input: WorkItemUpdateInput
+) -> Result<(), String> {
+    let mut mutation_parts: Vec<String> = Vec::new();
+    let mut variables = serde_json::json!({ "id": input.id });
+
+    if let Some(title) = input.title {
+        mutation_parts.push("title: $title".to_string());
+        variables["title"] = serde_json::json!(title);
+    }
+
+    if let Some(desc) = input.description {
+        mutation_parts.push("descriptionWidget: { description: $desc }".to_string());
+        variables["desc"] = serde_json::json!(desc);
+    }
+
+    if let Some(est) = input.estimate_seconds {
+        mutation_parts.push("timeTrackingWidget: { timeEstimate: $estimate }".to_string());
+        variables["estimate"] = serde_json::json!(format!("{}s", est));
+    }
+
+    if let Some(target_labels) = input.labels {
+        // 現在のラベルを取得して差分を計算
+        let current_labels = get_work_item_labels_gql(gl_url, token, &input.id).await?;
+        
+        let current_set: std::collections::HashSet<_> = current_labels.into_iter().collect();
+        let target_set: std::collections::HashSet<_> = target_labels.into_iter().collect();
+
+        let labels_to_add: Vec<_> = target_set.difference(&current_set).cloned().collect();
+        let labels_to_remove: Vec<_> = current_set.difference(&target_set).cloned().collect();
+
+        let mut labels_widget_parts = Vec::new();
+        if !labels_to_add.is_empty() {
+            labels_widget_parts.push("addLabelNames: $addLabels");
+            variables["addLabels"] = serde_json::json!(labels_to_add);
+        }
+        if !labels_to_remove.is_empty() {
+            labels_widget_parts.push("removeLabelNames: $removeLabels");
+            variables["removeLabels"] = serde_json::json!(labels_to_remove);
+        }
+
+        if !labels_widget_parts.is_empty() {
+            mutation_parts.push(format!("labelsWidget: {{ {} }}", labels_widget_parts.join(", ")));
+        }
+    }
+
+    if let Some(ms_id) = input.milestone_id {
+        mutation_parts.push("milestoneWidget: { milestoneId: $msId }".to_string());
+        variables["msId"] = serde_json::json!(ms_id);
+    }
+
+    if let Some(assignees) = input.assignee_ids {
+        mutation_parts.push("assigneesWidget: { assigneeIds: $assignees }".to_string());
+        variables["assignees"] = serde_json::json!(assignees);
+    }
+
+    if let Some(due) = input.due_date {
+        mutation_parts.push("startAndDueDateWidget: { dueDate: $due }".to_string());
+        variables["due"] = serde_json::json!(due);
+    }
+
+    if mutation_parts.is_empty() {
+        return Ok(());
+    }
+
+    // 動的に変数の型定義を構築
+    let mut var_defs = vec!["$id: WorkItemID!"];
+    if variables.get("title").is_some() { var_defs.push("$title: String"); }
+    if variables.get("desc").is_some() { var_defs.push("$desc: String"); }
+    if variables.get("estimate").is_some() { var_defs.push("$estimate: String"); }
+    if variables.get("addLabels").is_some() { var_defs.push("$addLabels: [String!]"); }
+    if variables.get("removeLabels").is_some() { var_defs.push("$removeLabels: [String!]"); }
+    if variables.get("msId").is_some() { var_defs.push("$msId: MilestoneID"); }
+    if variables.get("assignees").is_some() { var_defs.push("$assignees: [UserID!]"); }
+    if variables.get("due").is_some() { var_defs.push("$due: Date"); }
+
+    let query = format!(
+        r#"
+        mutation({}) {{
+          workItemUpdate(input: {{
+            id: $id,
+            {}
+          }}) {{
+            errors
+          }}
+        }}
+        "#,
+        var_defs.join(", "),
+        mutation_parts.join(",\n            ")
+    );
+
+    let res: serde_json::Value = query_gitlab(gl_url, token, &query, variables).await?;
+    check_gql_errors(&res, "workItemUpdate")
+}
+
+async fn get_work_item_labels_gql(
+    gl_url: &str,
+    token: &str,
+    work_item_id: &str
+) -> Result<Vec<String>, String> {
+    let query = r#"
+        query($id: WorkItemID!) {
+          workItem(id: $id) {
+            widgets {
+              ... on WorkItemWidgetLabels {
+                labels {
+                  nodes {
+                    title
+                  }
+                }
+              }
+            }
+          }
+        }
+    "#;
+    
+    let res: serde_json::Value = query_gitlab(gl_url, token, query, serde_json::json!({ "id": work_item_id })).await?;
+    
+    let mut labels = Vec::new();
+    if let Some(widgets) = res.pointer("/workItem/widgets").and_then(|w| w.as_array()) {
+        for widget in widgets {
+            if widget["type"] == "LABELS" {
+                if let Some(nodes) = widget.pointer("/labels/nodes").and_then(|n| n.as_array()) {
+                    for node in nodes {
+                        if let Some(title) = node["title"].as_str() {
+                            labels.push(title.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(labels)
+}
+
+pub async fn create_note_gql(
+    gl_url: &str,
+    token: &str,
+    noteable_id: &str,
+    body: &str
 ) -> Result<(), String> {
     let query = r#"
-        mutation($id: WorkItemID!, $desc: String!) {
-          workItemUpdate(input: { id: $id, descriptionWidget: { description: $desc } }) {
+        mutation($id: NoteableID!, $body: String!) {
+          createNote(input: { noteableId: $id, body: $body }) {
             errors
           }
         }
     "#;
-
-    let variables = serde_json::json!({
-        "id": work_item_id,
-        "desc": description
-    });
-
+    let variables = serde_json::json!({ "id": noteable_id, "body": body });
     let res: serde_json::Value = query_gitlab(gl_url, token, query, variables).await?;
-    if let Some(errors) = res.pointer("/workItemUpdate/errors").and_then(|e| e.as_array()) {
-        if !errors.is_empty() {
-            return Err(errors[0].as_str().unwrap_or("Unknown error").into());
+    check_gql_errors(&res, "createNote")
+}
+
+pub async fn update_note_gql(
+    gl_url: &str,
+    token: &str,
+    note_id: &str,
+    body: &str
+) -> Result<(), String> {
+    let query = r#"
+        mutation($id: NoteID!, $body: String!) {
+          updateNote(input: { id: $id, body: $body }) {
+            errors
+          }
         }
-    }
-    Ok(())
+    "#;
+    let variables = serde_json::json!({ "id": note_id, "body": body });
+    let res: serde_json::Value = query_gitlab(gl_url, token, query, variables).await?;
+    check_gql_errors(&res, "updateNote")
+}
+
+pub async fn delete_note_gql(
+    gl_url: &str,
+    token: &str,
+    note_id: &str
+) -> Result<(), String> {
+    let query = r#"
+        mutation($id: NoteID!) {
+          destroyNote(input: { id: $id }) {
+            errors
+          }
+        }
+    "#;
+    let variables = serde_json::json!({ "id": note_id });
+    let res: serde_json::Value = query_gitlab(gl_url, token, query, variables).await?;
+    check_gql_errors(&res, "destroyNote")
 }
 
 pub async fn create_child_task_rest(

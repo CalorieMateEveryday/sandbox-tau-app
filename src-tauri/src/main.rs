@@ -450,34 +450,47 @@ async fn create_child_work_item(
     ).await
 }
 
+
 #[tauri::command]
-async fn update_work_item_estimate(
+async fn update_work_item(
     app_handle: tauri::AppHandle,
-    work_item_id: String,
-    estimate_seconds: i64
+    input: gitlab::WorkItemUpdateInput
 ) -> Result<(), String> {
     let config = get_config(app_handle).map_err(|e| e.to_string())?;
-    gitlab::update_work_item_estimate_gql(
+    gitlab::update_work_item_gql(
         &config.gitlab.url,
         &config.gitlab.token,
-        &work_item_id,
-        estimate_seconds
+        input
     ).await
 }
 
 #[tauri::command]
-async fn update_work_item_description(
+async fn add_work_item_note(
     app_handle: tauri::AppHandle,
-    work_item_id: String,
-    description: String
+    noteable_id: String,
+    body: String
 ) -> Result<(), String> {
     let config = get_config(app_handle).map_err(|e| e.to_string())?;
-    gitlab::update_work_item_description_gql(
-        &config.gitlab.url,
-        &config.gitlab.token,
-        &work_item_id,
-        &description
-    ).await
+    gitlab::create_note_gql(&config.gitlab.url, &config.gitlab.token, &noteable_id, &body).await
+}
+
+#[tauri::command]
+async fn update_work_item_note(
+    app_handle: tauri::AppHandle,
+    note_id: String,
+    body: String
+) -> Result<(), String> {
+    let config = get_config(app_handle).map_err(|e| e.to_string())?;
+    gitlab::update_note_gql(&config.gitlab.url, &config.gitlab.token, &note_id, &body).await
+}
+
+#[tauri::command]
+async fn delete_work_item_note(
+    app_handle: tauri::AppHandle,
+    note_id: String
+) -> Result<(), String> {
+    let config = get_config(app_handle).map_err(|e| e.to_string())?;
+    gitlab::delete_note_gql(&config.gitlab.url, &config.gitlab.token, &note_id).await
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -589,9 +602,11 @@ fn main() {
         create_milestone,
         create_work_item,
         create_child_work_item,
-        update_work_item_estimate,
         fetch_targets_meta,
-        update_work_item_description
+        update_work_item,
+        add_work_item_note,
+        update_work_item_note,
+        delete_work_item_note
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

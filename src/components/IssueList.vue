@@ -107,9 +107,11 @@ const showDescription = (item: any) => {
 const saveDescription = async () => {
   if (descDialog.item) {
     try {
-      await invoke("update_work_item_description", {
-        workItemId: descDialog.item.id,
-        description: descDialog.description
+      await invoke("update_work_item", {
+        input: {
+          id: descDialog.item.id,
+          description: descDialog.description
+        }
       });
       descDialog.item.description = descDialog.description;
       descDialog.show = false;

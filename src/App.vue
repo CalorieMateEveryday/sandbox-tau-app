@@ -6,6 +6,7 @@
         <v-list-item prepend-icon="mdi-view-column" title="Issue Board" value="board" @click="currentView = 'board'"></v-list-item>
         <v-list-item prepend-icon="mdi-chart-line" title="Burndown" value="burndown" @click="currentView = 'burndown'"></v-list-item>
         <v-list-item prepend-icon="mdi-trending-up" title="Performance" value="performance" @click="currentView = 'performance'"></v-list-item>
+        <v-list-item prepend-icon="mdi-table-large" title="Workload" value="workload" @click="currentView = 'workload'"></v-list-item>
         <v-list-item prepend-icon="mdi-plus-box-multiple" title="Bulk Creation" value="bulk" @click="currentView = 'bulk'"></v-list-item>
         <v-divider class="my-2"></v-divider>
         <v-list-item prepend-icon="mdi-cog" title="Settings" value="settings" @click="currentView = 'settings'"></v-list-item>
@@ -91,6 +92,7 @@ import IssueList from "./components/IssueList.vue";
 import IssueBoard from "./components/IssueBoard.vue";
 import BurndownChart from "./components/BurndownChart.vue";
 import PerformanceStats from "./components/PerformanceStats.vue";
+import WorkloadMatrix from "./components/WorkloadMatrix.vue";
 import BulkCreation from "./components/BulkCreation.vue";
 import AppSettings from "./components/AppSettings.vue";
 
@@ -128,6 +130,7 @@ const currentViewComponent = computed(() => {
     case "board": return IssueBoard;
     case "burndown": return BurndownChart;
     case "performance": return PerformanceStats;
+    case "workload": return WorkloadMatrix;
     case "bulk": return BulkCreation;
     case "settings": return AppSettings;
     default: return IssueList;

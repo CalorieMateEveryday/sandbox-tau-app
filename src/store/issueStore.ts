@@ -151,9 +151,11 @@ export const useIssueStore = defineStore("issue", {
       this.loading = true;
       try {
         // 1. Reset parent estimate to 0
-        await invoke("update_work_item_estimate", { 
-          workItemId: parent.id, 
-          estimateSeconds: 0 
+        await invoke("update_work_item", { 
+          input: {
+            id: parent.id, 
+            estimate_seconds: 0 
+          }
         });
 
         // 2. Prepare inherited data
