@@ -50,20 +50,43 @@ pub struct ExcludeDays {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BoardConfig {
+    #[serde(default)]
     pub columns: Vec<String>,
+    #[serde(default)]
     pub excluded_child_labels: Vec<String>,
 }
+
+fn default_hours_per_day() -> u32 { 8 }
+fn default_avg_capacity_months() -> u32 { 3 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
     pub gitlab: GitLabConfig,
     pub targets: TargetConfig,
+    #[serde(default)]
     pub products: Vec<ProductConfig>,
+    #[serde(default)]
     pub users: Vec<UserConfig>,
     pub board: BoardConfig,
+    #[serde(default)]
     pub network_settings_path: String,
+    #[serde(default = "default_avg_capacity_months")]
     pub average_capacity_months: u32,
+    #[serde(default = "default_hours_per_day")]
     pub hours_per_day: u32,
+    #[serde(default)]
+    pub schedule_config_path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ScheduleEntry {
+    pub product_id: String,
+    pub file: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ScheduleConfig {
+    pub schedules: Vec<ScheduleEntry>,
 }
 
 fn load_exclude_days(app_handle: &tauri::AppHandle, path: &str) -> ExcludeDays {
@@ -114,6 +137,7 @@ fn get_config(app_handle: tauri::AppHandle) -> Result<AppConfig, String> {
                 excluded_child_labels: vec!["Status::Doing".into(), "Status::Done".into()],
             },
             network_settings_path: "".into(),
+            schedule_config_path: "".into(),
             average_capacity_months: 3,
             hours_per_day: 8,
         };
@@ -590,6 +614,44 @@ async fn fetch_targets_meta(app_handle: tauri::AppHandle) -> Result<TargetsMeta,
     })
 }
 
+#[tauri::command]
+fn get_schedule_config(app_handle: tauri::AppHandle) -> Result<ScheduleConfig, String> {
+    let config = get_config(app_handle).map_err(|e| e.to_string())?;
+    let path = &config.schedule_config_path;
+    if path.is_empty() {
+        return Ok(ScheduleConfig { schedules: vec![] });
+    }
+    match fs::read_to_string(path) {
+        Ok(content) => serde_json::from_str(&content).map_err(|e| e.to_string()),
+        Err(_) => Ok(ScheduleConfig { schedules: vec![] }),
+    }
+}
+
+#[tauri::command]
+fn save_schedule_config(app_handle: tauri::AppHandle, config: ScheduleConfig) -> Result<(), String> {
+    let app_config = get_config(app_handle).map_err(|e| e.to_string())?;
+    let path = &app_config.schedule_config_path;
+    if path.is_empty() {
+        return Err("Schedule config path is not set in application settings".to_string());
+    }
+    fs::write(path, serde_json::to_string_pretty(&config).unwrap()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn read_schedule_file(path: String) -> Result<String, String> {
+    fs::read_to_string(&path).map_err(|e| format!("Failed to read {}: {}", path, e))
+}
+
+#[tauri::command]
+fn save_schedule_file(path: String, content: String) -> Result<(), String> {
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+    }
+    fs::write(&path, content).map_err(|e| format!("Failed to write {}: {}", path, e))
+}
+
 fn main() {
   tauri::Builder::default()
     .plugin(tauri_plugin_opener::init())
@@ -606,7 +668,11 @@ fn main() {
         update_work_item,
         add_work_item_note,
         update_work_item_note,
-        delete_work_item_note
+        delete_work_item_note,
+        get_schedule_config,
+        save_schedule_config,
+        read_schedule_file,
+        save_schedule_file
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

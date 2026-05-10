@@ -8,6 +8,7 @@
         <v-list-item prepend-icon="mdi-trending-up" title="Performance" value="performance" @click="currentView = 'performance'"></v-list-item>
         <v-list-item prepend-icon="mdi-table-large" title="Workload" value="workload" @click="currentView = 'workload'"></v-list-item>
         <v-list-item prepend-icon="mdi-plus-box-multiple" title="Bulk Creation" value="bulk" @click="currentView = 'bulk'"></v-list-item>
+        <v-list-item prepend-icon="mdi-calendar-month" title="Schedule" value="schedule" @click="currentView = 'schedule'"></v-list-item>
         <v-divider class="my-2"></v-divider>
         <v-list-item prepend-icon="mdi-cog" title="Settings" value="settings" @click="currentView = 'settings'"></v-list-item>
       </v-list>
@@ -95,6 +96,7 @@ import PerformanceStats from "./components/PerformanceStats.vue";
 import WorkloadMatrix from "./components/WorkloadMatrix.vue";
 import BulkCreation from "./components/BulkCreation.vue";
 import AppSettings from "./components/AppSettings.vue";
+import ScheduleView from "./components/ScheduleView.vue";
 
 const issueStore = useIssueStore();
 const metaStore = useMetaStore();
@@ -132,6 +134,7 @@ const currentViewComponent = computed(() => {
     case "performance": return PerformanceStats;
     case "workload": return WorkloadMatrix;
     case "bulk": return BulkCreation;
+    case "schedule": return ScheduleView;
     case "settings": return AppSettings;
     default: return IssueList;
   }

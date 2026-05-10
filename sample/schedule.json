@@ -1,0 +1,8 @@
+{
+  "schedules": [
+    {
+      "product_id": "product-a",
+      "file": "C:/Users/Admin/AppData/Roaming/com.admin.tauri-app/schedule_a.md"
+    }
+  ]
+}

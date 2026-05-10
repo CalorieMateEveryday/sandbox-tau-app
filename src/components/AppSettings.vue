@@ -25,6 +25,13 @@
           <v-expansion-panel title="Paths & Calculations">
             <v-expansion-panel-text>
               <v-text-field label="Network Path (exclude_days.json)" v-model="config.network_settings_path"></v-text-field>
+              <v-text-field
+                label="Schedule Config Path (schedules_config.json)"
+                v-model="config.schedule_config_path"
+                hint="複数人で共有するスケジュール設定ファイルのパス (例: \\server\share\schedules\config.json)"
+                persistent-hint
+                class="mb-2"
+              ></v-text-field>
               <v-text-field label="Average Capacity Window (Months)" v-model.number="config.average_capacity_months" type="number"></v-text-field>
               <v-text-field label="Hours per Day" v-model.number="config.hours_per_day" type="number"></v-text-field>
             </v-expansion-panel-text>

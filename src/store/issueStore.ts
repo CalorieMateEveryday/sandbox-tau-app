@@ -28,6 +28,7 @@ export interface AppConfig {
   users: { username: string; display_name: string }[];
   board: { columns: string[]; excluded_child_labels: string[] };
   network_settings_path: string;
+  schedule_config_path: string;
   average_capacity_months: number;
   hours_per_day: number;
 }

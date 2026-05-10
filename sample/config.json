@@ -1,0 +1,34 @@
+{
+  "gitlab": {
+    "url": "http://your-gitlab-ce.local",
+    "token": ""
+  },
+  "targets": {
+    "groups": [],
+    "projects": []
+  },
+  "products": [
+    {
+      "id": "product-a",
+      "name": "product-a",
+      "color": "#0000",
+      "match_rules": {
+        "labels": [
+          "label-a"
+        ],
+        "project_ids": []
+      }
+    }
+  ],
+  "users": [],
+  "board": {
+    "columns": [
+      "Status::To Do",
+      "Status::Doing",
+      "Status::Done"
+    ]
+  },
+  "network_settings_path": "",
+  "average_capacity_months": 3,
+  "schedule_config_path": "C:/Users/Admin/AppData/Roaming/com.admin.tauri-app/schedule.json"
+}
