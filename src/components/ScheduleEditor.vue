@@ -114,7 +114,9 @@
           <v-text-field v-model="editingTask.alias" label="エイリアス (ID)"
             density="compact" class="mb-3"
             hint="依存関係の参照ID。省略可（英数字・ハイフン推奨）" persistent-hint
-            placeholder="例: task-a1" />
+            placeholder="例: task-a1"
+            append-inner-icon="mdi-refresh"
+            @click:append-inner="editingTask.alias = generateAlias()" />
 
           <!-- Modifiers -->
           <v-select v-model="editingTask.modifiers" label="種別"
@@ -272,10 +274,14 @@ function moveSectionDown(idx: number) {
 }
 
 // ─── Task operations ──────────────────────────────────────────────────────────
+function generateAlias() {
+  return `a${crypto.randomUUID().split("-")[0]}`;
+}
+
 function addTask(sIdx: number) {
   const today = new Date().toISOString().slice(0, 10);
   localSections.value[sIdx].tasks.push({
-    id: newId(), name: "新規タスク", alias: "",
+    id: newId(), name: "新規タスク", alias: generateAlias(),
     modifiers: [], start: today, duration: "7d",
   });
   openTaskEdit(sIdx, localSections.value[sIdx].tasks.length - 1);

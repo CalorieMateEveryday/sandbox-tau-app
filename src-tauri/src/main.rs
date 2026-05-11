@@ -59,6 +59,11 @@ pub struct BoardConfig {
 fn default_hours_per_day() -> u32 { 8 }
 fn default_avg_capacity_months() -> u32 { 3 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct LocalConfig {
+    pub shared_config_path: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
     pub gitlab: GitLabConfig,
@@ -75,7 +80,7 @@ pub struct AppConfig {
     #[serde(default = "default_hours_per_day")]
     pub hours_per_day: u32,
     #[serde(default)]
-    pub schedule_config_path: String,
+    pub schedules: Vec<ScheduleEntry>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -112,13 +117,50 @@ fn load_exclude_days(app_handle: &tauri::AppHandle, path: &str) -> ExcludeDays {
     }
 }
 
-#[tauri::command]
-fn get_config(app_handle: tauri::AppHandle) -> Result<AppConfig, String> {
-    let config_path = app_handle
+fn get_local_config_path(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    app_handle
         .path()
         .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("config.json");
+        .map(|p| p.join("local_config.json"))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_local_config(app_handle: tauri::AppHandle) -> Result<LocalConfig, String> {
+    let path = get_local_config_path(&app_handle)?;
+    if !path.exists() {
+        return Ok(LocalConfig::default());
+    }
+    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_local_config(app_handle: tauri::AppHandle, config: LocalConfig) -> Result<(), String> {
+    let path = get_local_config_path(&app_handle)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(&path, serde_json::to_string_pretty(&config).unwrap()).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn get_effective_config_path(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let local = get_local_config(app_handle.clone())?;
+    if !local.shared_config_path.is_empty() {
+        Ok(std::path::PathBuf::from(local.shared_config_path))
+    } else {
+        app_handle
+            .path()
+            .app_config_dir()
+            .map(|p| p.join("config.json"))
+            .map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+fn get_config(app_handle: tauri::AppHandle) -> Result<AppConfig, String> {
+    let config_path = get_effective_config_path(&app_handle)?;
 
     if !config_path.exists() {
         let template = AppConfig {
@@ -137,11 +179,13 @@ fn get_config(app_handle: tauri::AppHandle) -> Result<AppConfig, String> {
                 excluded_child_labels: vec!["Status::Doing".into(), "Status::Done".into()],
             },
             network_settings_path: "".into(),
-            schedule_config_path: "".into(),
+            schedules: vec![],
             average_capacity_months: 3,
             hours_per_day: 8,
         };
-        fs::create_dir_all(config_path.parent().unwrap()).map_err(|e| e.to_string())?;
+        if let Some(parent) = config_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
         fs::write(&config_path, serde_json::to_string_pretty(&template).unwrap()).map_err(|e| e.to_string())?;
         return Ok(template);
     }
@@ -152,13 +196,11 @@ fn get_config(app_handle: tauri::AppHandle) -> Result<AppConfig, String> {
 
 #[tauri::command]
 fn save_config(app_handle: tauri::AppHandle, config: AppConfig) -> Result<(), String> {
-    let config_path = app_handle
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("config.json");
+    let config_path = get_effective_config_path(&app_handle)?;
 
-    fs::create_dir_all(config_path.parent().unwrap()).map_err(|e| e.to_string())?;
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap()).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -617,24 +659,14 @@ async fn fetch_targets_meta(app_handle: tauri::AppHandle) -> Result<TargetsMeta,
 #[tauri::command]
 fn get_schedule_config(app_handle: tauri::AppHandle) -> Result<ScheduleConfig, String> {
     let config = get_config(app_handle).map_err(|e| e.to_string())?;
-    let path = &config.schedule_config_path;
-    if path.is_empty() {
-        return Ok(ScheduleConfig { schedules: vec![] });
-    }
-    match fs::read_to_string(path) {
-        Ok(content) => serde_json::from_str(&content).map_err(|e| e.to_string()),
-        Err(_) => Ok(ScheduleConfig { schedules: vec![] }),
-    }
+    Ok(ScheduleConfig { schedules: config.schedules })
 }
 
 #[tauri::command]
 fn save_schedule_config(app_handle: tauri::AppHandle, config: ScheduleConfig) -> Result<(), String> {
-    let app_config = get_config(app_handle).map_err(|e| e.to_string())?;
-    let path = &app_config.schedule_config_path;
-    if path.is_empty() {
-        return Err("Schedule config path is not set in application settings".to_string());
-    }
-    fs::write(path, serde_json::to_string_pretty(&config).unwrap()).map_err(|e| e.to_string())
+    let mut app_config = get_config(app_handle.clone()).map_err(|e| e.to_string())?;
+    app_config.schedules = config.schedules;
+    save_config(app_handle, app_config)
 }
 
 #[tauri::command]
@@ -658,6 +690,8 @@ fn main() {
     .invoke_handler(tauri::generate_handler![
         get_config,
         save_config,
+        get_local_config,
+        save_local_config,
         fetch_gitlab_data,
         calculate_capacities,
         get_working_days,
